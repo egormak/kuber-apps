@@ -1,22 +1,70 @@
 deploymentMode: SimpleScalable
 loki:
+  # ui:
+  #   # Disabled by default for backwards compatibility. Enable to use the Loki UI.
+  #   enabled: true
   # -- Storage config. Providing this will automatically populate all necessary storage configs in the templated config.
   # -- In case of using thanos storage, enable use_thanos_objstore and the configuration should be done inside the object_store section.
   storage:
     # Loki requires a bucket for chunks and the ruler. GEL requires a third bucket for the admin API.
     # Please provide these values if you are using object storage.
     bucketNames:
-      chunks: s3-chunks
-      ruler: s3-ruler
-      admin: s3-admin
+      chunks: loki-poc-storage-bucket
+      # ruler: loki-poc-storage-bucket/ruler
+      # admin: loki-poc-storage-bucket/admin
     type: s3
     s3:
-      endpoint: 192.168.7.71:9000
-      region: us-east-1
-      secretAccessKey: minioadmin
-      accessKeyId: minioadmin
-      s3ForcePathStyle: true
-      insecure: true
+      s3: null
+      endpoint: s3
+      region: eu-central-1
+      secretAccessKey: asd
+      accessKeyId: asd
+      s3ForcePathStyle: false
+      insecure: false
+  server:
+    http_listen_port: 3100
+    grpc_listen_port: 9095
+    http_server_read_timeout: 600s
+    http_server_write_timeout: 600s
+    grpc_server_max_recv_msg_size: 157286400
+    grpc_server_max_send_msg_size: 157286400
+
+  limits_config:
+    reject_old_samples: true
+    reject_old_samples_max_age: 100h
+  #   max_cache_freshness_per_query: 10m
+    split_queries_by_interval: 15m
+    query_timeout: 60s
+  #   volume_enabled: true
+  #   per_stream_rate_limit: 10MB
+  #   per_stream_rate_limit_burst: 25MB
+    max_global_streams_per_user: 20000
+  #   max_entries_limit_per_query: 10000
+    # max_streams_per_user: 10000 #CHECK
+    retention_period: 120h
+    max_query_series: 2000
+    ingestion_rate_mb: 40
+    ingestion_burst_size_mb: 50
+    max_label_names_per_series: 25
+  # frontend:
+  #   log_queries_longer_than: 30s
+  #   max_outstanding_per_tenant: 4096
+  # querier:
+  #   max_concurrent: 16
+  compactor:
+    compaction_interval: 30m
+    delete_request_store: s3
+    retention_enabled: true
+    retention_delete_delay: 2h
+    retention_delete_worker_count: 100
+  ingester:
+    chunk_idle_period: 30m
+    max_chunk_age: 2h
+    chunk_target_size: 1572864
+    chunk_encoding: snappy
+  query_range:
+    cache_results: true
+
 
   # -- Check https://grafana.com/docs/loki/latest/configuration/#schema_config for more info on how to configure schemas
   schemaConfig:
@@ -32,7 +80,9 @@ loki:
 gateway:
   enabled: false
 chunksCache:
-  allocatedMemory: 1024
+  allocatedMemory: 2048
+resultsCache:
+  allocatedMemory: 512
 test:
   enabled: false
 lokiCanary:
@@ -40,15 +90,50 @@ lokiCanary:
 ingress:
   enabled: true
   ingressClassName: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/client-body-buffer-size: 15m
+    nginx.ingress.kubernetes.io/auth-type: basic
+    nginx.ingress.kubernetes.io/auth-secret: loki-basic-auth
+  #    nginx.ingress.kubernetes.io/auth-secret-type: auth-map
+  #    nginx.ingress.kubernetes.io/configuration-snippet: |
+  #      proxy_set_header X-Scope-OrgID $remote_user;
   hosts:
-    - loki.example.com
+    - loki.example
+ruler:
+  enabled: false
+
+
 
 write:
   replicas: 3
   affinity:
+  # resources:
+  #   requests:
+  #     cpu: 300m
+  #     memory: 1536Mi
+  #   limits:
+  #     memory: 1536Mi
 read:
   replicas: 3
   affinity:
+  resources:
+    requests:
+      cpu: 3
+      memory: 2048Mi
+    limits:
+      memory: 4096Mi
 backend:
   replicas: 3
   affinity:
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      memory: 512Mi
+
+monitoring:
+  dashboards:
+    enabled: true
+  serviceMonitor:
+    enabled: true
