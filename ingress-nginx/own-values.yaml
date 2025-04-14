@@ -1,0 +1,20 @@
+controller:
+  config:
+    enable-real-ip: true
+  configAnnotations:
+    proxy-body-size: 2048m
+    client-body-buffer-size: 10m
+  hostPort:
+    enabled: true
+  kind: DaemonSet
+  service:
+    type: NodePort
+    nodePorts:
+      http: 32080
+      https: 32443
+  metrics:
+    enabled: true
+    service:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "10254"
