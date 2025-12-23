@@ -1,0 +1,141 @@
+# Vector configuration for Kubernetes log and metrics collection
+# Role: Agent (runs as DaemonSet on every node)
+role: "Agent"
+
+# Pod configuration
+podLabels:
+  vector.dev/exclude: "true"
+
+# Resource limits and requests
+# Uncomment and adjust based on your cluster capacity
+# resources:
+#   requests:
+#     cpu: 200m
+#     memory: 256Mi
+#   limits:
+#     memory: 512Mi
+
+# Tolerations to run on all nodes including control plane
+tolerations:
+  - effect: NoSchedule
+    key: node-role.kubernetes.io/control-plane
+    operator: Exists
+  - effect: NoSchedule
+    key: node-role.kubernetes.io/master
+    operator: Exists
+
+# Vector configuration
+# This is a basic configuration that collects Kubernetes logs
+# Customize based on your specific requirements
+customConfig:
+  # data_dir: /vector-data-dir
+  api:
+    enabled: true
+    address: 127.0.0.1:8686
+    # playground: false
+
+  # Source: Kubernetes logs from ALL pods (for debugging)
+  sources:
+    kubernetes_logs:
+      type: kubernetes_logs
+      auto_partial_merge: true
+      self_node_name: "${VECTOR_SELF_NODE_NAME}"
+      # Temporarily removed label selector to debug
+      extra_label_selector: "app.kubernetes.io/name=nginx-ingress"
+
+  # Transform: Parse and enrich logs
+  transforms:
+    remap_kubernetes:
+      type: remap
+      inputs:
+        - kubernetes_logs
+      source: |
+        # Extract Kubernetes metadata for VictoriaLogs stream fields
+        .appname = .kubernetes.container_name
+        .namespace = .kubernetes.pod_namespace
+        .node = .kubernetes.pod_node_name
+        .pod = .kubernetes.pod_name
+
+        # Ensure message field exists (use the log message)
+        .message = string!(.message)
+
+  # Sink: Send logs to VictoriaLogs
+  sinks:
+    # Console sink for debugging (remove after testing)
+    console_debug:
+      type: console
+      inputs:
+        - kubernetes_logs
+      encoding:
+        codec: json
+
+    # victorialogs:
+    #   type: http
+    #   inputs:
+    #     - remap_kubernetes
+    #   uri: "http://m2-victoria-logs-01.vm.local:9428/insert/jsonline?_stream_fields=appname,namespace,pod&_msg_field=message&_time_field=timestamp"
+    #   compression: gzip
+
+    #   # Encoding: newline-delimited JSON (NDJSON)
+    #   encoding:
+    #     codec: json
+
+    #   # Framing: newline delimited for NDJSON format
+    #   framing:
+    #     method: newline_delimited
+
+    #   # Batch settings - reduce to stay under VictoriaLogs 262KB limit per line
+    #   batch:
+    #     max_bytes: 204800  # 200KB (under 262KB limit)
+    #     max_events: 100    # Reduced to keep batch size smaller
+    #     timeout_secs: 5
+
+    #   # Buffer settings
+    #   buffer:
+    #     type: memory
+    #     max_events: 10000
+
+    #   # Request settings
+    #   request:
+    #     timeout_secs: 30
+    #     retry_attempts: 3
+    #     retry_initial_backoff_secs: 1
+    #     retry_max_duration_secs: 60
+
+    #     # Additional headers
+    #     headers:
+    #       Content-Type: "application/x-ndjson"
+
+# Environment variables
+# Note: VECTOR_SELF_NODE_NAME is automatically set by the chart when using role: Agent
+env: []
+logLevel: "debug"
+
+# # Persistence for Vector data directory
+# # Using emptyDir for OpenShift compatibility (no hostPath needed for container logs)
+# persistence:
+#   enabled: false
+#   hostPath:
+#     enabled: false
+
+# # Disable default hostPath volumes for OpenShift compatibility
+# # We only need container logs via Kubernetes API, not host filesystem access
+# defaultVolumes: []
+# defaultVolumeMounts: []
+
+# # Service configuration
+# service:
+#   enabled: true
+#   type: ClusterIP
+
+# Service Monitor for Prometheus integration
+serviceMonitor:
+  enabled: false
+  # additionalLabels:
+  #   release: monitoring
+
+# Pod Monitor for Prometheus integration
+podMonitor:
+  enabled: false
+  # additionalLabels:
+  #   release: monitoring
